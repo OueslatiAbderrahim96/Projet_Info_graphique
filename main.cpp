@@ -131,27 +131,27 @@ public:
     Sphere(const Vector& O, double R, const Vector& albedo, bool mirro = false, bool transp = false): O(O),R(R), albedo(albedo),mirro(mirro),transp(transp){};
 
 
-    bool intersect(const Ray& r, Vector& P, Vector& N, double& t){
+    bool intersect(const Ray& r, Vector& P, Vector& N, double& t) const {
         //2*t^2+b*t+c
         double a = 1;
         double b = 2 * dot(r.u, r.C - O);
-        double c =(r.C -O).getNormSquare() -R*R;
+        double c =(r.C-O).getNormSquare() -R*R;
 
         double delta = b*b - 4*a*c;
         if(delta<0) return false;
         double sqrtDelta = sqrt(delta);
         double t1 = (-b + sqrtDelta)/(2*a);
-        if(t1<0)return false;
+        if(t1<0) return false;
 
-        double t0=(-b - sqrtDelta)/(2*a);
+        double t0 = (-b - sqrtDelta)/(2*a);
         if(t0 > 0){
             t = t0;
         }else{
             t = t1;
         }
         P = r.C + t*r.u;
-        N = P - O;
-        N.normalize();
+        N = (P - O);
+	N.normalize();
         return true;
     }
     Vector O;
@@ -163,18 +163,20 @@ public:
 class Scene{
 public :
     Scene(){};
+
     void addSphere(Sphere* s){
         spheres.push_back(s);
     }
-    bool intersect(const Ray& r, Vector& P, Vector& N, int& indice){
+
+    bool intersect(const Ray& r, Vector& P, Vector& N, int& indice, double& t) const {
         bool has_inter = false;
-        double t = std::numeric_limits<double>::max();
+        t = std::numeric_limits<double>::max();
 
         for(int i=0; i<spheres.size();i++){
            Vector Plocal, Nlocal;
            double tlocal;
-           bool inter = spheres[1]->intersect(r,Plocal, Nlocal, tlocal);
-           if(inter){
+           bool interlocal = spheres[i]->intersect(r,Plocal, Nlocal, tlocal);
+           if(interlocal){
                 has_inter = true;
                 if(tlocal < t){
                     t = tlocal;
@@ -184,111 +186,89 @@ public :
                 }
            }
         }
+       return has_inter; 
     }
 
     Vector getColor(const Ray& r,int numrebond){
         if(numrebond<0) return Vector(0.,0.,0.);
-        Vector I(0.,0.,0.);
         Vector P, N;
         int indice_sphere;
-        bool has_intersection = intersect(r, P, N, indice_sphere);
+	double t;
+        bool has_intersection = intersect(r, P, N, indice_sphere,t);
 
-
+	Vector intensite_pixel=Vector(0.,0.,0.);
         if(has_intersection){
 
             if(spheres[indice_sphere]->mirro){
-                Vector R = r.u - 2*dot(r.u,N)*N;
-                Ray rray(P+0.0001*N, R);
-                return getColor(rray, numrebond-1);
+                Vector direction_miroir = r.u - 2*dot(r.u,N)*N;
+                Ray rray_miroir(P+0.0001*N, direction_miroir);
+                return getColor(rray_miroir, numrebond-1);
             }
 
-            if(spheres[indice_sphere]->transp){
-                double n1=1;
-                double n2=1.4;
-                Vector Nfor = N;
-                double dotp=dot(r.u,N);
-                if(dotp>0){
-                    std::swap(n1,n2);
-                    Nfor = -N;
-                    dotp = -dotp;
-
-                }
-                double delta = 1-sqr(n1/n2)*(1-dotp*dotp);
-                Vector T;
-                double coeffT;
-                if (delta <0){
-                    coeffT = 0;
-                }else{
-                    double k0 = sqr((n1-n2)/(n1+n2));
-                    Vector schlickRef = -r.u;
-                    Vector Tt=(r.u-dotp*Nfor)*(n1/n2);
-                    Vector Tn = -sqrt(delta)*Nfor;
-                    T = Tn+Tt;
-                    if(n1>n2){
-                        schlickRef = T;
-                    }
-                    double coeffT = k0 + (1-k0)*pow(1-dot(schlickRef,Nfor),5);
-                }
-                if(distrib(engine)<coeffT){
-
-                    Ray tray(P - 0.0001*Nfor,T);
-                    return getColor(tray,numrebond-1);
-                }
-                else{
-                    T = r.u - 2 *dotp * N;
-                    Ray tray(P+0.0001*Nfor, T);
-                    return getColor(tray, numrebond-1);
-                }
-                }
-
-            //}
-
-            double lightdist = sqrt((L-P).getNormSquare());
-            Vector lightdirNormalized = L - P;
-            lightdirNormalized /= lightdist;
-
-            Ray shadowRay(P+0.0001*N, lightdirNormalized);
-            Vector I = intensiteL / MATH_PI * spheres[indice_sphere]->albedo * std::max(0., dot(N, lightdirNormalized))/(lightdist * lightdist);
-            Vector Pprime, Nprime;
-            int indiceprime;
-            double tprime;
-            if(intersect(shadowRay,Pprime, Nprime, indiceprime)){
-                if(sqrt((Pprime - P).getNormSquare())<lightdist*lightdist){
-                    I = Vector(0,0,0);
-                }
-            }
-
-        }
-        return I;
+            else {
+		  if(spheres[indice_sphere]->transp){
+		        double n1=1;
+		        double n2=1.4;
+		        Vector NforTransp(N);
+		        if(dot(r.u,N)>0){
+		            std::swap(n1,n2);
+		            NforTransp = -1*N;
+		        }
+		        double delta = 1-sqr(n1/n2)*(1-sqr(dot(r.u,NforTransp)));
+                         if(delta>0){
+                               Vector direction_refracte = (n1/n2)*(r.u - dot(r.u, NforTransp)*NforTransp) - NforTransp*sqrt(delta);
+                               Ray rayon_refracte(P - 0.0001*NforTransp,direction_refracte);
+                               return getColor(rayon_refracte, numrebond-1);
+                          }
+		        
+		    }
+	            else{
+                            Vector vlocal = (L-P);
+                            vlocal.normalize();
+			    Ray shadowRay(P+0.0001*N, vlocal);     
+			    Vector Pprime, Nprime;
+			    int indiceprime;
+			    double tprime;
+			    double d_lightlocal = (L-P).getNormSquare(); 
+			    if(intersect(shadowRay,Pprime, Nprime, indiceprime,tprime) && tprime*tprime < d_lightlocal){
+				 return Vector(0.,0.,0.);
+			    }
+			    else{
+				return spheres[indice_sphere]->albedo * intensiteL * std::max(0., dot(vlocal,N)) / d_lightlocal;
+			     }
+		       }
+        	}
+	}
+        return intensite_pixel;
     }
     std::vector<Sphere*> spheres;
-    Vector L,C ;
+    Vector L ;
     double intensiteL;
 };
 
 int main()
 {
-    int W = 512;
-    int H = 512;
+    int W = 1024;
+    int H = 1024;
 
     Scene s;
-    Sphere scentre(Vector(0., 0., 0.), 10, Vector(1.,1.,1.),true);
-    Sphere ssol(Vector(0., -1000., 0.), 1000-10, Vector(0.,0.,1.),false);
-    Sphere splafond(Vector(0., 1000., 0.), 1000-60, Vector(1.,0.,0.));
-    Sphere smur1(Vector(-1000., 0., 0.), 1000-60, Vector(1.,0.,1.));
-    Sphere smur2(Vector(1000., 0., 0.), 1000-60, Vector(0.,1.,1.));
-    Sphere smurfond(Vector(0., 0., -1000.), 1000-60, Vector(0.,1.,0.));
+    Sphere s1(Vector(-15., 0., -55.), 10, Vector(1.,0.,0.),false,true);
+    Sphere s2(Vector(15., 0., -55.), 10, Vector(1.,0.,0.),true);
+    Sphere ssol(Vector(0., -2000-20, 0.), 2000, Vector(1.,1.,1.));
+    Sphere splafond(Vector(0., 2000+100., 0.), 2000, Vector(1.,1.,1.));
+    Sphere smurgauche(Vector(-2000-50., 0., 0.), 2000, Vector(0.,1.,0.));
+    Sphere smurdroit(Vector(2000+50., 0., 0.), 2000, Vector(0.,0.,1.));
+    Sphere smurfond(Vector(0., 0., -2000-100.), 2000, Vector(0.,1.,1.));
 
-    s.addSphere(&scentre);
+    s.addSphere(&s1);
+    s.addSphere(&s2);
     s.addSphere(&ssol);
     s.addSphere(&splafond);
-    s.addSphere(&smur1);
-    s.addSphere(&smur2);
+    s.addSphere(&smurgauche);
+    s.addSphere(&smurdroit);
     s.addSphere(&smurfond);
 
-    s.C=Vector(0., 0., 55);
-
-    s.L=Vector(-10, 20, 40);
+    s.L=Vector(15, 70, -30);
     s.intensiteL = 1000000000;
 
     double alpha = 60 * MATH_PI /180;
@@ -301,21 +281,19 @@ int main()
                 Vector u(j-W / 2, -i+H /2, -d);
                 u.normalize();
 
-                Ray r(C, u);
-                Vector I(0.,0.,0.);
-                for(int k=0;k<10;k++)
-                    I=I+s.getColor(r, 5)/10;
+                Ray r(Vector(0.,0.,0.), u);
+                Vector I=s.getColor(r, 5);
 
                 img[(i*W + j)*3 + 0] = std::min(255., pow(I[0], 0.45));
                 img[(i*W + j)*3 + 1] = std::min(255., pow(I[1], 0.45));
                 img[(i*W + j)*3 + 2] = std::min(255., pow(I[2], 0.45));
-                }
+           }
         }
-    }
+    
 
     //img[(10 * W + 50)*3] = 255;  // pixel at (x, y) = (50, 10) is red
 
-    stbi_write_png("img.png", W, H,3, &img[0], 0);
+    stbi_write_png("image.png", W, H,3, &img[0], 0);
 
     return 0;
 }
