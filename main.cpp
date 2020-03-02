@@ -11,7 +11,8 @@
 #include <string>
 #include <map>
 #include <cstdio>
-
+#include <list>
+//email : nicolas.bonneel@liris.cnrs.fr
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
@@ -19,8 +20,10 @@
 #include "stb_image.h"
 
 #define MATH_PI 3.1415922653589
+
+//les textures : perso.liris.cnrs.fr/nbonneel/tmp/texturesbmp.zip
 using namespace std;
-std::default_random_engine engine[8];
+std::default_random_engine engine[4];
 std::uniform_real_distribution<double> distrib(0,1);
 
 inline double sqr(double x){
@@ -130,6 +133,7 @@ class Vector {
      return Vector(B[0]/k, B[1]/k, B[2]/k);
  }
 
+
  double dot(const Vector& A, const Vector& B){
      return A[0] * B[0] + A[1] * B[1] + A[2] * B[2];
  }
@@ -171,12 +175,20 @@ Triangle(const Vector& A, const Vector& B, const Vector& C, const Vector& albedo
 	this->albedo = albedo;
 	this->mirro = mirro; 
 	this->transp = transp;
+        
 };
 
- bool intersect(const Ray& d, Vector& P, Vector& N, double& t) const {
+bool intersect(const Ray& d, Vector& P, Vector& N, double& t) const {
+	double alpha, beta, gamma;
+	return intersect(d,P,N,t);
+}
+
+bool intersect(const Ray& d, Vector& P, Vector& N, double& t,double &alpha,double &beta,double &gamma) const {
 	N = -1*cross(B - A, C - A);
+        //cout<<A[0]<<" : "<<A[1]<<" : "<<A[2]<<endl;
         N.normalize();
         t = dot(C-d.C,N) / dot(d.u,N);
+        //cout<<"N = "<<N.coords[0]<<"t = "<<t<<endl;
         if(t<0) return false;
         P = d.C + t*d.u;
         Vector u = B-A;
@@ -189,18 +201,17 @@ Triangle(const Vector& A, const Vector& B, const Vector& C, const Vector& albedo
         double b11 = dot(w,u);
         double b21 = dot(w, v);
         double detb=b11*m22 - b21*m12;
-        double beta = detb/detm;
-        double g12 = b11;
-        double g22 = b21;
-        double detg = m11*g22 - m12*g12;
-        double gamma = detg/detm;
-        double alpha = 1-beta-gamma;
+        beta = detb/detm;
+        double detg = m11*b21 - m12*b11;
+        gamma = detg/detm;
+        alpha = 1-beta-gamma;
         if(alpha<0 || alpha>1) return false;
         if(beta<0 || beta>1) return false;
         if(gamma<0 || gamma>1) return false;
                 
         return true;       
 }
+
 
 };
 
@@ -279,9 +290,18 @@ public:
    Vector bmin, bmax;
 };
 
+class BVH{
+public:
+	
+	int i0, i1;
+	BBox bbox;
+
+	BVH* fg; BVH* fd;
+};
+
 class Geometry :public Object{
 private : 
-	BBox bb;
+	BVH bvh;
 public:
 	Geometry() {};
 	Geometry(const char* obj, double scaling, const Vector& offset, const Vector& albedo, bool mirro=false,bool transp=false) {
@@ -295,7 +315,47 @@ public:
 	}
        
        bool intersect(const Ray& d, Vector& P, Vector& N, double& t) const {
-		if (!bb.intersect(d)) return false;
+		t=1E99;
+		bool has_inter=false;
+
+		if (!bvh.bbox.intersect(d)) 
+			return false;
+
+		std::list<const BVH*> listBVH;
+		listBVH.push_front(&bvh);
+		while(! listBVH.empty()){
+			const BVH* currentNode = listBVH.front();
+			listBVH.pop_front();
+			if(currentNode->fg && currentNode->fg->bbox.intersect(d)){
+				listBVH.push_back(currentNode->fg);
+			}
+			if(currentNode->fd && currentNode->fd->bbox.intersect(d)){
+				listBVH.push_back(currentNode->fd);
+			}
+			if(!currentNode->fg){
+				for(int i=currentNode->i0; i<currentNode->i1;i++){
+					Triangle tri1(vertices[indices[i].vtxi],vertices[indices[i].vtxj],vertices[indices[i].vtxk],albedo,mirro,transp);
+/*cout<<(vertices[indices[i].vtxi].coords[0]/25)<<" : "<<(vertices[indices[i].vtxi].coords[1]+20)/25<<" : "<<(vertices[indices[i].vtxi].coords[2]+55)/25<<endl;*/
+					Vector localP, localN ;
+					double localt;
+					double alpha,beta, gamma;
+					if (tri1.intersect(d,localP,localN,localt,alpha,beta, gamma)){
+						has_inter=true;
+						if (localt<t){
+							t =localt;
+							P=localP;
+							//N=localN;	
+							N = normals[indices[i].ni] * alpha +normals[indices[i].nj] * beta + normals[indices[i].nk] * gamma;
+							N.normalize();
+						}
+					}
+				}
+			}
+                   
+		}
+
+		/*if (!bb.intersect(d)) 
+			return false;
 		t=1E99;
 		bool has_inter=false;
 		for (int i=0;i<indices.size();i++){
@@ -303,15 +363,15 @@ public:
 			Vector localP, localN ;
 			double localt;
 			if (tri.intersect(d,localP,localN,localt)){
+				has_inter=true;
 				if (localt<t){
 					t =localt;
 					P=localP;
-					N=localN;
-					has_inter=true;
+					N=localN;		
 				}
 			}
 		
-		}
+		}*/
 		return has_inter;
 	}
       
@@ -501,14 +561,75 @@ public:
 
 		}
 		fclose(f);
-		bb.bmax = vertices[0];
-		bb.bmin = vertices[0];
-            for(int i=0;i<vertices.size();i++){
+		//cout<<vertices.size()<<endl;
+		//BBox b = build_bbox(0,indices.size());
+		build_bvh(&bvh,0,indices.size());
+		
+	}
+
+	BBox build_bbox(int i0, int i1){
+              BBox res;
+		res.bmax = vertices[indices[i0].vtxi];
+		res.bmin = vertices[indices[i0].vtxi];
+		int index = indices[i0].vtxi;
+            for(int i=i0;i<i1;i++){
 		for(int j=0;j<3;j++){
-			bb.bmin.coords[j] = std::min(bb.bmin[j],vertices[i][j]);
-			bb.bmax.coords[j] = std::max(bb.bmax[j],vertices[i][j]);
+			if(j==0) index = indices[i].vtxi;
+			else{if(j==1) index = indices[i].vtxj;
+				else index = indices[i].vtxk;}
+			for(int k=0; k<3;k++){			
+				res.bmin.coords[k] = std::min(res.bmin[k],vertices[index][k]);
+				res.bmax.coords[k] = std::max(res.bmax[k],vertices[index][k]);
+			}
 		}
 	     }
+	return res;
+	}
+
+	void build_bvh(BVH* node, int i0, int i1){
+		node->bbox = build_bbox(i0,i1);
+		node->i0 = i0;
+		node->i1 = i1;
+		node->fg = NULL;
+		node->fd = NULL;
+		Vector diag =node->bbox.bmax - node->bbox.bmin;
+		int split_dim;
+		if((diag[0] >diag[1]) && (diag[0] >diag[2])){
+			split_dim =0;
+		}else{
+			if((diag[1] >diag[0]) && (diag[1] >diag[2])){
+				split_dim = 1;	
+			}else{
+				split_dim = 2;			
+			}
+		}
+
+		double split_val = node->bbox.bmin[split_dim] + diag[split_dim]*0.5;
+
+		int pivot = i0 - 1;
+		for(int i =i0;i<i1;i++){
+			double centre_split_dim = (vertices[indices[i].vtxi].coords[split_dim] + vertices[indices[i].vtxj].coords[split_dim] + vertices[indices[i].vtxk].coords[split_dim])/3.;		
+			if(centre_split_dim < split_val){
+				pivot++;
+				std::swap(indices[i].vtxi,indices[pivot].vtxi);
+				std::swap(indices[i].vtxj,indices[pivot].vtxj);
+				std::swap(indices[i].vtxk,indices[pivot].vtxk);
+
+				std::swap(indices[i].ni,indices[pivot].ni);
+				std::swap(indices[i].nj,indices[pivot].nj);
+				std::swap(indices[i].nk,indices[pivot].nk);
+			}
+		}
+
+	if(pivot <= i0 || pivot>=i1) 
+			return;
+
+	node->fg = new BVH();
+	build_bvh(node->fg, i0, pivot);
+
+	node->fd = new BVH();
+	build_bvh(node->fd, pivot, i1);
+	
 	}
 
 
@@ -562,17 +683,19 @@ public :
         objects.push_back(&s);
     }
 
-    bool intersect(const Ray& r, Vector& P, Vector& N, int& indice, double& t) const {
+   bool intersect(const Ray& r, Vector& P, Vector& N, int& indice, double& t) const {
         bool has_inter = false;
         t = std::numeric_limits<double>::max();
-
+        
         for(int i=0; i<objects.size();i++){
            Vector Plocal, Nlocal;
            double tlocal;
            bool interlocal = objects[i]->intersect(r,Plocal, Nlocal, tlocal);
+           //cout<<i<<" ; "<<interlocal<<endl;
            if(interlocal){
                 has_inter = true;
-                if(tlocal < t){
+                //cout<<t<<" ; "<<tlocal<<endl;
+                if(tlocal < t){//cout<<"ok"<<endl;
                     t = tlocal;
                     P = Plocal;
                     N = Nlocal;
@@ -583,7 +706,8 @@ public :
        return has_inter; 
     }
 
-    Vector getColor(const Ray& r,int numrebond){
+
+   Vector getColor(const Ray& r,int numrebond){
         if(numrebond<0) return Vector(0.,0.,0.);
         Vector P, N;
         int indice_sphere;
@@ -591,7 +715,7 @@ public :
         bool has_intersection = intersect(r, P, N, indice_sphere,t);
 
 	Vector intensite_pixel=Vector(0.,0.,0.);
-        if(has_intersection){
+        if(has_intersection){//cout<<objects.size()<<" ;ok  "<<indice_sphere<<endl;
             if(indice_sphere == 0){
                    return L->albedo * intensiteL / (4* MATH_PI * L->R * L->R);
             }
@@ -665,6 +789,8 @@ public :
 	}
         return intensite_pixel;
     }
+
+
     std::vector<const Object*> objects;
     Sphere* L ;
     double intensiteL;
@@ -672,8 +798,8 @@ public :
 
 int main()
 {
-    int W = 1024;
-    int H = 1024;
+    int W = 512;
+    int H = 512;
     Scene s;
     Sphere s_lumiere(Vector(15, 70, -30),15,Vector(1.,1.,1.));
     //Sphere s1(Vector(0., 0., -55.), 10, Vector(1.,1.,1.));
@@ -681,12 +807,12 @@ int main()
     //Sphere s3(Vector(15., 0., -75.), 10, Vector(1.,1.,1.),true);
     Sphere ssol(Vector(0., -2000-20, 0.), 2000, Vector(1.,1.,1.));
     Sphere splafond(Vector(0., 2000+100, 0.), 2000, Vector(1.,1.,1.));
-    Sphere smurgauche(Vector(-2000-50, 0., 0.), 2000, Vector(0.,1.,0.));
-    Sphere smurdroit(Vector(2000+50, 0., 0.), 2000, Vector(0.,0.,1.));
-    Sphere smurfond(Vector(0., 0., -2000-100), 2000, Vector(0.,1.,1.));
- 
-    Geometry g1("BeautifulGirl.obj",25,Vector(0,0,-55),Vector(1.,1.,1.));
+    Sphere smurgauche(Vector(-2000-50, 0., 0.), 2000, Vector(0.7,0.5,1.));
+    Sphere smurdroit(Vector(2000+50, 0., 0.), 2000, Vector(0.,0.7,0.4));
+    Sphere smurfond(Vector(0., 0., -2000-100), 2000, Vector(0.6,0.2,0.5));
+    Geometry g1("BeautifulGirl.obj",25,Vector(0,-21,-35),Vector(1.,1.,1.));
     //Triangle tri(Vector(-10,-10,-55),Vector(10,-10,-55),Vector(0,10,-55),Vector(1,0,0)); 
+
     s.addSphere(s_lumiere);
     s.addGeometry(g1);
     //s.addSphere(s1);
@@ -700,22 +826,23 @@ int main()
     //s.addTriangle(tri);
 
     s.L = &s_lumiere;
-    s.intensiteL = 10000000000;
+    s.intensiteL = 1000000000;
 
     double alpha = 60 * MATH_PI /180;
     double d = W / (2 * tan(alpha/2.));
-    const int nbr_ray = 10; 
+    const int nbr_ray = 100; 
     Vector position_camera(0.,0.,0.);
-    double focus_distance = 55;
-    double aperture=5.;
+    double focus_distance = 35;
+    double aperture=0.5;
     std::vector<unsigned char> img(W*H * 3, 0);
-#pragma cmp parallel for schedule(dynamic,1)
+#pragma cmp parallel for 
     for(int i = 0 ; i<H ; i++){
+        
         for(int j = 0; j < W; j++){
-
+                
                 Vector I = Vector(0.,0.,0.);
 
-		for(int k =0;k<nbr_ray;k++){
+		for(int k =0;k<nbr_ray;k++){                       
                         //Box Muller
                         double r1 = distrib(engine[omp_get_thread_num()]);
                         double r2 = distrib(engine[omp_get_thread_num()]);
@@ -744,7 +871,7 @@ int main()
 
     //img[(10 * W + 50)*3] = 255;  // pixel at (x, y) = (50, 10) is red
 
-    stbi_write_png("image12.png", W, H,3, &img[0], 0);
+    stbi_write_png("image15.png", W, H,3, &img[0], 0);
 
     return 0;
 }
