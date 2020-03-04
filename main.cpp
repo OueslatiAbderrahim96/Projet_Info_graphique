@@ -146,7 +146,7 @@ Vector random_cos(const Vector& N){
      double r1 = distrib(engine[omp_get_thread_num()]);
      double r2 = distrib(engine[omp_get_thread_num()]);
      Vector direction_aleatoir_repere_local(cos(2 * MATH_PI * r1) * sqrt(1 - r2), sin(2 * MATH_PI * r1) * sqrt(1-r2),sqrt(r2));
-     Vector aleatoir(distrib(engine[omp_get_thread_num()])+0.5,distrib(engine[omp_get_thread_num()])+0.5,distrib(engine[omp_get_thread_num()])+0.5);
+     Vector aleatoir(distrib(engine[omp_get_thread_num()])-0.5,distrib(engine[omp_get_thread_num()])-0.5,distrib(engine[omp_get_thread_num()])-0.5);
      Vector tangent1 = cross(N,aleatoir);
      tangent1.normalize();
      Vector tangent2 = cross(tangent1, N);                            
@@ -180,7 +180,7 @@ Triangle(const Vector& A, const Vector& B, const Vector& C, const Vector& albedo
 
 bool intersect(const Ray& d, Vector& P, Vector& N, double& t) const {
 	double alpha, beta, gamma;
-	return intersect(d,P,N,t);
+	return intersect(d,P,N,t,alpha, beta, gamma);
 }
 
 bool intersect(const Ray& d, Vector& P, Vector& N, double& t,double &alpha,double &beta,double &gamma) const {
@@ -283,7 +283,7 @@ public:
 	double t_min_z = std::min(t_1_z,t_2_z);
 	double t_max_z = std::max(t_1_z,t_2_z);
         
-        if(std::min(std::min(t_max_x,t_max_y),t_max_z) - std::max(std::max(t_min_x,t_min_y),t_min_z) > 0) 
+        if(std::min(std::min(t_max_x,t_max_y),t_max_z) - std::max(std::max(t_min_x,t_min_y),t_min_z) > 0)
 		return true;
 	return false;
    }
@@ -332,8 +332,8 @@ public:
 			if(currentNode->fd && currentNode->fd->bbox.intersect(d)){
 				listBVH.push_back(currentNode->fd);
 			}
-			if(!currentNode->fg){
-				for(int i=currentNode->i0; i<currentNode->i1;i++){
+			if(!currentNode->fg){                                
+				for(int i=currentNode->i0; i<currentNode->i1;i++){                                       
 					Triangle tri1(vertices[indices[i].vtxi],vertices[indices[i].vtxj],vertices[indices[i].vtxk],albedo,mirro,transp);
 /*cout<<(vertices[indices[i].vtxi].coords[0]/25)<<" : "<<(vertices[indices[i].vtxi].coords[1]+20)/25<<" : "<<(vertices[indices[i].vtxi].coords[2]+55)/25<<endl;*/
 					Vector localP, localN ;
@@ -571,7 +571,7 @@ public:
               BBox res;
 		res.bmax = vertices[indices[i0].vtxi];
 		res.bmin = vertices[indices[i0].vtxi];
-		int index = indices[i0].vtxi;
+		int index;
             for(int i=i0;i<i1;i++){
 		for(int j=0;j<3;j++){
 			if(j==0) index = indices[i].vtxi;
@@ -610,10 +610,12 @@ public:
 		for(int i =i0;i<i1;i++){
 			double centre_split_dim = (vertices[indices[i].vtxi].coords[split_dim] + vertices[indices[i].vtxj].coords[split_dim] + vertices[indices[i].vtxk].coords[split_dim])/3.;		
 			if(centre_split_dim < split_val){
-				pivot++;
+				pivot++;                              
+				//cout<<indices[i].vtxi<<" : "<<indices[pivot].vtxi<<endl;
 				std::swap(indices[i].vtxi,indices[pivot].vtxi);
 				std::swap(indices[i].vtxj,indices[pivot].vtxj);
 				std::swap(indices[i].vtxk,indices[pivot].vtxk);
+				//cout<<indices[i].vtxi<<" : "<<indices[pivot].vtxi<<endl;
 
 				std::swap(indices[i].ni,indices[pivot].ni);
 				std::swap(indices[i].nj,indices[pivot].nj);
@@ -691,11 +693,12 @@ public :
            Vector Plocal, Nlocal;
            double tlocal;
            bool interlocal = objects[i]->intersect(r,Plocal, Nlocal, tlocal);
-           //cout<<i<<" ; "<<interlocal<<endl;
+         
+           
            if(interlocal){
                 has_inter = true;
                 //cout<<t<<" ; "<<tlocal<<endl;
-                if(tlocal < t){//cout<<"ok"<<endl;
+                if(tlocal < t){//if(i ==6) cout<<"ok : "<<i<<endl;
                     t = tlocal;
                     P = Plocal;
                     N = Nlocal;
@@ -758,7 +761,7 @@ public :
 				intensite_pixel = spheres[indice_sphere]->albedo / MATH_PI * intensiteL * std::max(0., dot(vlocal,N)) / d_lightlocal;
 			     }*/
                              
-                             //eclairage indirect
+                             
                              Vector axePO = (P - L->O);
                              axePO.normalize();
                              Vector dir_aleatoire = random_cos(axePO);
@@ -766,7 +769,7 @@ public :
                              Vector wi = (point_aleatoire - P);
                              wi.normalize();
                              double d_lightlocal = (point_aleatoire - P).getNormSquare();
-                             Vector Np = dir_aleatoire;
+                             //Vector Np = dir_aleatoire;
 
                            
 			    Ray shadowRay(P+0.01*N, wi);     
@@ -777,9 +780,11 @@ public :
                              
                               if(has_inter && tprime*tprime < d_lightlocal*0.99){
 				 intensite_pixel = Vector(0.,0.,0.);
-			    }else{
-                             intensite_pixel = (intensiteL / (4*MATH_PI*d_lightlocal)*std::max(0.,dot(N,wi))*dot(Np,-1*wi) /dot(axePO, dir_aleatoire))* objects[indice_sphere]->albedo ;               }
-        
+			    }else{//if(indice_sphere==6) cout<<"ok1 : "<<indice_sphere<<endl;
+                             intensite_pixel = (intensiteL / (4*MATH_PI*d_lightlocal)*std::max(0.,dot(N,wi))*dot(dir_aleatoire,-1*wi) /dot(axePO, dir_aleatoire))* objects[indice_sphere]->albedo ;
+                              //if(indice_sphere==6) cout<<"ok1 : "<<intensite_pixel[0]<<" ; "<<intensite_pixel[1]<<" ; "<<intensite_pixel[2]<<endl;
+                             }  
+                             //eclairage indirect      
                              Vector direction_aleatoir = random_cos(N);
                              Ray rray_aleatoir(P+0.0001*N, direction_aleatoir);
                              intensite_pixel += getColor(rray_aleatoir, numrebond-1) * objects[indice_sphere]->albedo;
@@ -801,41 +806,43 @@ int main()
     int W = 512;
     int H = 512;
     Scene s;
-    Sphere s_lumiere(Vector(15, 70, -30),15,Vector(1.,1.,1.));
-    //Sphere s1(Vector(0., 0., -55.), 10, Vector(1.,1.,1.));
-    //Sphere s2(Vector(-15., 0., -35.), 10, Vector(1.,1.,1.),false,true);
-    //Sphere s3(Vector(15., 0., -75.), 10, Vector(1.,1.,1.),true);
+    Sphere s_lumiere(Vector(15, 70, -30),30,Vector(1.,1.,1.));
+    /*Sphere s1(Vector(0., 0., -55.), 10, Vector(1.,1.,1.));
+    Sphere s2(Vector(-15., 0., -35.), 10, Vector(1.,1.,1.),false,true);
+    Sphere s3(Vector(15., 0., -75.), 10, Vector(1.,1.,1.),true);*/
+    Geometry g1("BeautifulGirl.obj",25.,Vector(0.,-10.,-35.),Vector(1.,1.,1.));
     Sphere ssol(Vector(0., -2000-20, 0.), 2000, Vector(1.,1.,1.));
     Sphere splafond(Vector(0., 2000+100, 0.), 2000, Vector(1.,1.,1.));
     Sphere smurgauche(Vector(-2000-50, 0., 0.), 2000, Vector(0.7,0.5,1.));
     Sphere smurdroit(Vector(2000+50, 0., 0.), 2000, Vector(0.,0.7,0.4));
     Sphere smurfond(Vector(0., 0., -2000-100), 2000, Vector(0.6,0.2,0.5));
-    Geometry g1("BeautifulGirl.obj",25,Vector(0,-21,-35),Vector(1.,1.,1.));
+    
     //Triangle tri(Vector(-10,-10,-55),Vector(10,-10,-55),Vector(0,10,-55),Vector(1,0,0)); 
 
-    s.addSphere(s_lumiere);
+    s.addSphere(s_lumiere);    
+    /*s.addSphere(s1);
+    s.addSphere(s2);
+    s.addSphere(s3);*/
     s.addGeometry(g1);
-    //s.addSphere(s1);
-    //s.addSphere(s2);
-    //s.addSphere(s3);
     s.addSphere(ssol);
     s.addSphere(splafond);
     s.addSphere(smurgauche);
     s.addSphere(smurdroit);
     s.addSphere(smurfond);
     //s.addTriangle(tri);
+    
 
     s.L = &s_lumiere;
-    s.intensiteL = 1000000000;
+    s.intensiteL = 3000000000;
 
     double alpha = 60 * MATH_PI /180;
     double d = W / (2 * tan(alpha/2.));
-    const int nbr_ray = 100; 
+    const int nbr_ray = 30; 
     Vector position_camera(0.,0.,0.);
-    double focus_distance = 35;
+    double focus_distance = 35.;
     double aperture=0.5;
     std::vector<unsigned char> img(W*H * 3, 0);
-#pragma cmp parallel for 
+#pragma omp parallel for 
     for(int i = 0 ; i<H ; i++){
         
         for(int j = 0; j < W; j++){
@@ -871,7 +878,7 @@ int main()
 
     //img[(10 * W + 50)*3] = 255;  // pixel at (x, y) = (50, 10) is red
 
-    stbi_write_png("image15.png", W, H,3, &img[0], 0);
+    stbi_write_png("image16.png", W, H,3, &img[0], 0);
 
     return 0;
 }
