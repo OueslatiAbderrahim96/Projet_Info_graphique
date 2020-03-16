@@ -23,7 +23,7 @@
 
 //les textures : perso.liris.cnrs.fr/nbonneel/tmp/texturesbmp.zip
 using namespace std;
-std::default_random_engine engine[4];
+std::default_random_engine engine[8];
 std::uniform_real_distribution<double> distrib(0,1);
 
 inline double sqr(double x){
@@ -283,7 +283,7 @@ public:
 	double t_min_z = std::min(t_1_z,t_2_z);
 	double t_max_z = std::max(t_1_z,t_2_z);
         
-        if(std::min(std::min(t_max_x,t_max_y),t_max_z) - std::max(std::max(t_min_x,t_min_y),t_min_z) > 0)
+        if((std::min(std::min(t_max_x,t_max_y),t_max_z) - std::max(std::max(t_min_x,t_min_y),t_min_z)) > 0)
 		return true;
 	return false;
    }
@@ -323,7 +323,7 @@ public:
 
 		std::list<const BVH*> listBVH;
 		listBVH.push_front(&bvh);
-		while(! listBVH.empty()){
+		while(!listBVH.empty()){
 			const BVH* currentNode = listBVH.front();
 			listBVH.pop_front();
 			if(currentNode->fg && currentNode->fg->bbox.intersect(d)){
@@ -571,7 +571,7 @@ public:
               BBox res;
 		res.bmax = vertices[indices[i0].vtxi];
 		res.bmin = vertices[indices[i0].vtxi];
-		int index;
+		int index =-1;
             for(int i=i0;i<i1;i++){
 		for(int j=0;j<3;j++){
 			if(j==0) index = indices[i].vtxi;
@@ -592,7 +592,7 @@ public:
 		node->i1 = i1;
 		node->fg = NULL;
 		node->fd = NULL;
-		Vector diag =node->bbox.bmax - node->bbox.bmin;
+		Vector diag = node->bbox.bmax - node->bbox.bmin;
 		int split_dim;
 		if((diag[0] >diag[1]) && (diag[0] >diag[2])){
 			split_dim =0;
@@ -725,7 +725,7 @@ public :
 
             if(objects[indice_sphere]->mirro){
                 Vector direction_miroir = r.u - 2*dot(r.u,N)*N;
-                Ray rray_miroir(P+0.0001*N, direction_miroir);
+                Ray rray_miroir(P+0.001*N, direction_miroir);
                 intensite_pixel = getColor(rray_miroir, numrebond-1);
             }
 
@@ -741,7 +741,7 @@ public :
 		        double delta = 1-sqr(n1/n2)*(1-sqr(dot(r.u,NforTransp)));
                          if(delta>0){
                                Vector direction_refracte = (n1/n2)*(r.u - dot(r.u, NforTransp)*NforTransp) - NforTransp*sqrt(delta);
-                               Ray rayon_refracte(P - 0.0001*NforTransp,direction_refracte);
+                               Ray rayon_refracte(P - 0.001*NforTransp,direction_refracte);
                                intensite_pixel = getColor(rayon_refracte, numrebond-1);
                           }
 		        
@@ -772,7 +772,7 @@ public :
                              //Vector Np = dir_aleatoire;
 
                            
-			    Ray shadowRay(P+0.01*N, wi);     
+			    Ray shadowRay(P+0.001*N, wi);     
 			    Vector Pprime, Nprime;
 			    int indiceprime;
 			    double tprime;
@@ -781,12 +781,11 @@ public :
                               if(has_inter && tprime*tprime < d_lightlocal*0.99){
 				 intensite_pixel = Vector(0.,0.,0.);
 			    }else{//if(indice_sphere==6) cout<<"ok1 : "<<indice_sphere<<endl;
-                             intensite_pixel = (intensiteL / (4*MATH_PI*d_lightlocal)*std::max(0.,dot(N,wi))*dot(dir_aleatoire,-1*wi) /dot(axePO, dir_aleatoire))* objects[indice_sphere]->albedo ;
-                              //if(indice_sphere==6) cout<<"ok1 : "<<intensite_pixel[0]<<" ; "<<intensite_pixel[1]<<" ; "<<intensite_pixel[2]<<endl;
-                             }  
+                             intensite_pixel = (intensiteL / (4*MATH_PI*d_lightlocal)*std::max(0.,dot(N,wi))*dot(dir_aleatoire,-1*wi) /dot(axePO, dir_aleatoire))* objects[indice_sphere]->albedo ;                        
+                             }
                              //eclairage indirect      
                              Vector direction_aleatoir = random_cos(N);
-                             Ray rray_aleatoir(P+0.0001*N, direction_aleatoir);
+                             Ray rray_aleatoir(P+0.001*N, direction_aleatoir);
                              intensite_pixel += getColor(rray_aleatoir, numrebond-1) * objects[indice_sphere]->albedo;
 
 		       }
@@ -806,16 +805,16 @@ int main()
     int W = 512;
     int H = 512;
     Scene s;
-    Sphere s_lumiere(Vector(15, 70, -30),30,Vector(1.,1.,1.));
+    Sphere s_lumiere(Vector(15, 70, -30),15.,Vector(1.,1.,1.));
     /*Sphere s1(Vector(0., 0., -55.), 10, Vector(1.,1.,1.));
     Sphere s2(Vector(-15., 0., -35.), 10, Vector(1.,1.,1.),false,true);
     Sphere s3(Vector(15., 0., -75.), 10, Vector(1.,1.,1.),true);*/
-    Geometry g1("BeautifulGirl.obj",25.,Vector(0.,-10.,-35.),Vector(1.,1.,1.));
+    Geometry g1("BeautifulGirl.obj",25.,Vector(0.,-10.,-20.),Vector(1.,1.,1.));
     Sphere ssol(Vector(0., -2000-20, 0.), 2000, Vector(1.,1.,1.));
     Sphere splafond(Vector(0., 2000+100, 0.), 2000, Vector(1.,1.,1.));
-    Sphere smurgauche(Vector(-2000-50, 0., 0.), 2000, Vector(0.7,0.5,1.));
-    Sphere smurdroit(Vector(2000+50, 0., 0.), 2000, Vector(0.,0.7,0.4));
-    Sphere smurfond(Vector(0., 0., -2000-100), 2000, Vector(0.6,0.2,0.5));
+    Sphere smurgauche(Vector(-2000-50, 0., 0.), 2000, Vector(1.,0.,1.));
+    Sphere smurdroit(Vector(2000+50, 0., 0.), 2000, Vector(0.,1.,0.));
+    Sphere smurfond(Vector(0., 0., -2000-100), 2000, Vector(0.,1.,1.));
     
     //Triangle tri(Vector(-10,-10,-55),Vector(10,-10,-55),Vector(0,10,-55),Vector(1,0,0)); 
 
@@ -835,14 +834,14 @@ int main()
     s.L = &s_lumiere;
     s.intensiteL = 3000000000;
 
-    double alpha = 60 * MATH_PI /180;
-    double d = W / (2 * tan(alpha/2.));
-    const int nbr_ray = 30; 
+    double alphafov = 60 * MATH_PI /180;
+    double d = W / (2 * tan(alphafov/2.));
+    const int nbr_ray =10; 
     Vector position_camera(0.,0.,0.);
     double focus_distance = 35.;
     double aperture=0.5;
     std::vector<unsigned char> img(W*H * 3, 0);
-#pragma omp parallel for 
+#pragma omp parallel for  schedule(dynamic,1)
     for(int i = 0 ; i<H ; i++){
         
         for(int j = 0; j < W; j++){
@@ -859,13 +858,13 @@ int main()
                            
                         double dx_aperture = (distrib(engine[omp_get_thread_num()])-0.5)*aperture;
                         double dy_aperture = (distrib(engine[omp_get_thread_num()])-0.5)*aperture;
-                        Vector u(j-W / 2 + 0.5 + dx, -i+H /2 + 0.5 + dy, -d);
+                        Vector u(j-W / 2. + 0.5 + dx, -i+H /2. + 0.5 + dy, -d);
                         u.normalize();
-                        Vector destination = position_camera + focus_distance * u; 
+                        /*Vector destination = position_camera + focus_distance * u; 
                         Vector new_origin = position_camera + Vector(dx_aperture,dy_aperture,0);
                         Vector new_direction = (destination - new_origin);
-                        new_direction.normalize();
-                        Ray r(new_origin, new_direction);
+                        new_direction.normalize();*/
+                        Ray r(position_camera , u);
                  	I += s.getColor(r, 5)/nbr_ray;
                 }
 
