@@ -860,11 +860,11 @@ int main()
                         double dy_aperture = (distrib(engine[omp_get_thread_num()])-0.5)*aperture;
                         Vector u(j-W / 2. + 0.5 + dx, -i+H /2. + 0.5 + dy, -d);
                         u.normalize();
-                        /*Vector destination = position_camera + focus_distance * u; 
+                        Vector destination = position_camera + focus_distance * u; 
                         Vector new_origin = position_camera + Vector(dx_aperture,dy_aperture,0);
                         Vector new_direction = (destination - new_origin);
-                        new_direction.normalize();*/
-                        Ray r(position_camera , u);
+                        new_direction.normalize();
+                        Ray r(new_origin  , new_direction);
                  	I += s.getColor(r, 5)/nbr_ray;
                 }
 
